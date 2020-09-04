@@ -70,6 +70,7 @@ function stripeElements(publishableKey) {
 
   let paymentForm = document.getElementById('payment-form');
   if (paymentForm) {
+    setSelectedPrice();
     paymentForm.addEventListener('submit', function (evt) {
       evt.preventDefault();
       changeLoadingStatePrices(true);
@@ -146,11 +147,41 @@ function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
     });
 }
 
-function goToPaymentPage(priceId) {
+function setSelectedPrice() {
+  // Show which price the user selected
+  let searchParams = new URLSearchParams(window.location.search);
+  let priceId = searchParams.get('priceId');
+  console.log(priceId);
+  if (priceId === 'premium') {
+    document.querySelector('#submit-premium-button-text').innerText =
+      'Selected';
+    document.querySelector('#submit-basic-button-text').innerText = 'Select';
+    document.querySelector('#submit-price').disabled = false;
+  } else if (priceId === 'basic') {
+    document.querySelector('#submit-premium-button-text').innerText = 'Select';
+    document.querySelector('#submit-basic-button-text').innerText = 'Selected';
+    document.querySelector('#submit-price').disabled = false
+  } else {
+    document.querySelector('#submit-price').disabled = true;
+  }
+
+  // Update the border to show which price is selected
+  changePriceSelection(priceId);
+}
+
+function selectPrice(priceId) {
+  // For the demo just store selected price as a URL param.
+  let searchParams = new URLSearchParams(window.location.search);
+  searchParams.set('priceId', priceId);
+  window.location.search = searchParams.toString();
+}
+
+function goToPaymentPage() {
   // Show the payment screen
   document.querySelector('#payment-form').classList.remove('hidden');
   document.querySelector('#price-picker').classList.add('hidden');
 
+  let priceId = new URLSearchParams(window.location.search).get('priceId');;
   document.getElementById('total-due-now').innerText = getFormattedAmount(
     priceInfo[priceId].amount
   );
@@ -161,19 +192,6 @@ function goToPaymentPage(priceId) {
     '<span id="priceId" class="font-bold">' +
     priceInfo[priceId].name +
     '</span>';
-
-  // Show which price the user selected
-  if (priceId === 'premium') {
-    document.querySelector('#submit-premium-button-text').innerText =
-      'Selected';
-    document.querySelector('#submit-basic-button-text').innerText = 'Select';
-  } else {
-    document.querySelector('#submit-premium-button-text').innerText = 'Select';
-    document.querySelector('#submit-basic-button-text').innerText = 'Selected';
-  }
-
-  // Update the border to show which price is selected
-  changePriceSelection(priceId);
 }
 
 function goToPricePicker() {

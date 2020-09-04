@@ -381,6 +381,16 @@ button {
   padding: 0;
 }
 
+button:disabled {
+  background-color: #a0aec0;
+}
+
+button:disabled:hover, button:disabled:focus {
+  background-color: #a0aec0;
+  color: #fff;
+  outline: "none";
+}
+
 /**
  * Work around a Firefox/IE bug where the transparent `button` background
  * results in a loss of the default `button` focus styles.

@@ -36,83 +36,97 @@
           Subscribe to a plan
         </div>
 
-        <div id="price-picker" class="flex justify-between mb-8">
-          <div
-            id="basic"
-            class="w-1/2 rounded overflow-hidden border rounded-md p-2 mr-4 md:mr-8"
-          >
-            <div class="px-2 py-2">
-              <div class="text-gray-500 text-xl mb-2 font-medium">
-                Basic
-              </div>
-              <p class="text-pasha text-2xl font-extrabold">
-                $5.00
-              </p>
-              <div class="flex-wrap">
-                <div class="leading-none text-gray-500 text-xs font-medium">
-                  Per month
+        <div id="price-picker">
+          <div class="flex justify-between mb-8">
+            <div
+              id="basic"
+              class="w-1/2 rounded overflow-hidden border rounded-md p-2 mr-4 md:mr-8"
+            >
+              <div class="px-2 py-2">
+                <div class="text-gray-500 text-xl mb-2 font-medium">
+                  Basic
                 </div>
-                <div
-                  class="leading-none text-gray-500 text-xs font-medium mt-1"
-                >
-                  Billed monthly
-                </div>
-              </div>
-
-              <div class="flex justify-center mt-6">
-                <button
-                  id="submit-basic"
-                  onClick="goToPaymentPage('basic')"
-                  class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
-                  type="submit"
-                >
-                  <div
-                    id="submit-basic-button-text"
-                    class="w-auto -mx-2 md:mx-0"
-                  >
-                    Select
+                <p class="text-pasha text-2xl font-extrabold">
+                  $5.00
+                </p>
+                <div class="flex-wrap">
+                  <div class="leading-none text-gray-500 text-xs font-medium">
+                    Per month
                   </div>
-                </button>
+                  <div
+                    class="leading-none text-gray-500 text-xs font-medium mt-1"
+                  >
+                    Billed monthly
+                  </div>
+                </div>
+
+                <div class="flex justify-center mt-6">
+                  <button
+                    id="submit-basic"
+                    onClick="selectPrice('basic')"
+                    class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
+                  >
+                    <div
+                      id="submit-basic-button-text"
+                      class="w-auto -mx-2 md:mx-0"
+                    >
+                      Select
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div
+              id="premium"
+              class="w-1/2 rounded overflow-hidden border rounded-md p-2"
+            >
+              <div class="px-2 py-2">
+                <div class="text-gray-500 text-xl mb-2 font-medium">
+                  Premium
+                </div>
+                <p class="text-pasha text-2xl font-extrabold">
+                  $15.00
+                </p>
+                <div class="flex-wrap">
+                  <div class="leading-none text-gray-500 text-xs font-medium">
+                    Per month
+                  </div>
+                  <div
+                    class="leading-none text-gray-500 text-xs font-medium mt-1"
+                  >
+                    Billed monthly
+                  </div>
+                </div>
+                <div class="flex justify-center mt-6">
+                  <button
+                    id="submit-premium"
+                    onClick="selectPrice('premium')"
+                    class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
+                  >
+                    <div
+                      id="submit-premium-button-text"
+                      class="w-auto -mx-2 md:mx-0"
+                    >
+                      Select
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          <div
-            id="premium"
-            class="w-1/2 rounded overflow-hidden border rounded-md p-2"
-          >
-            <div class="px-2 py-2">
-              <div class="text-gray-500 text-xl mb-2 font-medium">
-                Premium
+          <div class="w-full flex justify-center">
+            <button
+              id="submit-price"
+              class="w-1\/2 bg-pasha hover:bg-white hover:shadow-outline hover:text-pasha hover:border hover:border-black focus:shadow-outline text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-md"
+              onClick="goToPaymentPage()"
+              type="submit"
+              disabled
+            >
+              <div class="">
+                <div id="loading" class="hidden">Proceeding...</div>
+                <span id="button-text" class="">Proceed to payment</span>
               </div>
-              <p class="text-pasha text-2xl font-extrabold">
-                $15.00
-              </p>
-              <div class="flex-wrap">
-                <div class="leading-none text-gray-500 text-xs font-medium">
-                  Per month
-                </div>
-                <div
-                  class="leading-none text-gray-500 text-xs font-medium mt-1"
-                >
-                  Billed monthly
-                </div>
-              </div>
-              <div class="flex justify-center mt-6">
-                <button
-                  id="submit-premium"
-                  onClick="goToPaymentPage('premium')"
-                  class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
-                  type="submit"
-                >
-                  <div
-                    id="submit-premium-button-text"
-                    class="w-auto -mx-2 md:mx-0"
-                  >
-                    Select
-                  </div>
-                </button>
-              </div>
-            </div>
+            </button>
           </div>
         </div>
         <div id="payment-form" class="flex justify-center hidden">
@@ -167,7 +181,7 @@
                   </div>
                 </div>
                 <button
-                  id="submit-premium"
+                  id="submit-payment"
                   class="w-full bg-pasha hover:bg-white hover:shadow-outline hover:text-pasha hover:border hover:border-black focus:shadow-outline text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-md"
                   type="submit"
                 >
