@@ -36,7 +36,7 @@
           Subscribe to a plan
         </div>
 
-        <div class="flex justify-between mb-8">
+        <div id="price-picker" class="flex justify-between mb-8">
           <div
             id="basic"
             class="w-1/2 rounded overflow-hidden border rounded-md p-2 mr-4 md:mr-8"
@@ -120,6 +120,9 @@
             <div class="font-bold text-xl mb-2">
               Enter your card details. </br>Your subscription will start now.
             </div>
+            <p class="font-bold text-pasha cursor-pointer">
+              <a onClick="goToPricePicker()">← Select a different plan</a>
+            </p>
             <p class="text-gray-700 text-base">
               → Total due now <span id="total-due-now">$0.00</span>
             </p>

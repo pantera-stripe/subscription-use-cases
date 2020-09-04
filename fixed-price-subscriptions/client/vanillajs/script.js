@@ -149,6 +149,7 @@ function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
 function goToPaymentPage(priceId) {
   // Show the payment screen
   document.querySelector('#payment-form').classList.remove('hidden');
+  document.querySelector('#price-picker').classList.add('hidden');
 
   document.getElementById('total-due-now').innerText = getFormattedAmount(
     priceInfo[priceId].amount
@@ -173,6 +174,11 @@ function goToPaymentPage(priceId) {
 
   // Update the border to show which price is selected
   changePriceSelection(priceId);
+}
+
+function goToPricePicker() {
+  document.querySelector('#payment-form').classList.add('hidden');
+  document.querySelector('#price-picker').classList.remove('hidden');
 }
 
 function changePrice() {
