@@ -68,31 +68,43 @@ function stripeElements(publishableKey) {
     });
   }
 
-  let paymentForm = document.getElementById('payment-form');
-  if (paymentForm) {
+  let pricePicker = document.getElementById('price-picker');
+  if (pricePicker) {
     setSelectedPrice();
+  }
+
+  const paymentForm = document.getElementById('payment-form');
+  if (paymentForm) {
     paymentForm.addEventListener('submit', function (evt) {
       evt.preventDefault();
+      // TODO: Now that price picker is split from the payment form, is this needed?
       changeLoadingStatePrices(true);
 
-      // If a previous payment was attempted, get the lastest invoice
-      const latestInvoicePaymentIntentStatus = localStorage.getItem(
-        'latestInvoicePaymentIntentStatus'
-      );
+      console.log('handling price submit');
+      const params = new URLSearchParams(window.location.search);
+      const customerId = params.get('customerId');
+      
+      const priceId = document.getElementById('priceId').innerHTML.toUpperCase();
+      getOrCreateIncompleteSubscription({customerId, priceId})
+        .then(function(incompleteSubscription) {
+          const {payment_intent: paymentIntent} = incompleteSubscription.latest_invoice;
+          pay({paymentIntent, card})
+        })
+        // TODO: this should deal with requires action
+        .then(handlePaymentThatRequiresCustomerAction)
+        // handle any payment errors thrown and allow the customer to re-submit their payment information
+        // then handle requires payment
+        // handle confirm?
+        // handle success
+        .catch((result) => {
+          const {error}  = result;
+          if (error) {
+            displayError(error)
+          } else {
+            displayError("Unexpected error. Try again.")
+          }
+        })
 
-      if (latestInvoicePaymentIntentStatus === 'requires_payment_method') {
-        const invoiceId = localStorage.getItem('latestInvoiceId');
-        const isPaymentRetry = true;
-        // create new payment method & retry payment on invoice with new payment method
-        createPaymentMethod({
-          card,
-          isPaymentRetry,
-          invoiceId,
-        });
-      } else {
-        // create new payment method & create subscription
-        createPaymentMethod({ card });
-      }
     });
   }
 }
@@ -105,6 +117,44 @@ function displayError(event) {
   } else {
     displayError.textContent = '';
   }
+}
+
+function getOrCreateIncompleteSubscription({customerId, priceId}) {
+  const incompleteSubscription = localStorage.getItem('incompleteSubscription');
+  if (incompleteSubscription) return incompleteSubscription;
+  console.log('Creating subscription because it does not already exist');
+  // TODO: handle creating a new subscription if the price changes
+
+  return createSubscription({customerId, priceId})
+    .then(function(subscription) {
+      console.log('saving subscription in local storage')
+      if (subscription) {
+        localStorage.setItem('incompleteSubscription', subscription);
+      }
+      return subscription;
+    })
+}
+
+function pay({paymentIntent, card}) {
+  const billingName = document.querySelector('#name').value;
+  return stripe.confirmCardPayment(paymentIntent.client_secret, {
+    paymentMethod: {
+      card,
+      billing_details: {
+        name: billingName,
+      }
+    }
+  })
+  .then((result) => {
+    if (result.error) {
+      // start code flow to handle updating the payment details
+      // Display error message in your UI.
+      // The card was declined (i.e. insufficient funds, card has expired, etc)
+      throw result;
+    } else {
+      return result.paymentIntent;
+    }
+  })
 }
 
 function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
@@ -151,7 +201,6 @@ function setSelectedPrice() {
   // Show which price the user selected
   let searchParams = new URLSearchParams(window.location.search);
   let priceId = searchParams.get('priceId');
-  console.log(priceId);
   if (priceId === 'premium') {
     document.querySelector('#submit-premium-button-text').innerText =
       'Selected';
@@ -170,6 +219,9 @@ function setSelectedPrice() {
 }
 
 function selectPrice(priceId) {
+  // TODO: change this to local storage. Setting the URL reloads the page
+  // and snaps back to the top. Could also do pushState if we want to retain back
+  // button functionality.
   // For the demo just store selected price as a URL param.
   let searchParams = new URLSearchParams(window.location.search);
   searchParams.set('priceId', priceId);
@@ -178,7 +230,7 @@ function selectPrice(priceId) {
 
 function goToPaymentPage() {
   // Show the payment screen
-  document.querySelector('#payment-form').classList.remove('hidden');
+  document.querySelector('#payment-view').classList.remove('hidden');
   document.querySelector('#price-picker').classList.add('hidden');
 
   let priceId = new URLSearchParams(window.location.search).get('priceId');;
@@ -195,7 +247,7 @@ function goToPaymentPage() {
 }
 
 function goToPricePicker() {
-  document.querySelector('#payment-form').classList.add('hidden');
+  document.querySelector('#payment-view').classList.add('hidden');
   document.querySelector('#price-picker').classList.remove('hidden');
 }
 
@@ -283,56 +335,22 @@ function createCustomer() {
     });
 }
 
-function handlePaymentThatRequiresCustomerAction({
-  subscription,
-  invoice,
-  priceId,
-  paymentMethodId,
-  isRetry,
-}) {
-  if (subscription && subscription.status === 'active') {
-    // subscription is active, no customer actions required.
-    return { subscription, priceId, paymentMethodId };
+function handlePaymentThatRequiresCustomerAction(paymentIntent) {
+  if (paymentIntent.status !== 'requires_action') {
+    return paymentIntent
   }
-
-  // If it's a first payment attempt, the payment intent is on the subscription latest invoice.
-  // If it's a retry, the payment intent will be on the invoice itself.
-  let paymentIntent = invoice
-    ? invoice.payment_intent
-    : subscription.latest_invoice.payment_intent;
-
-  if (
-    paymentIntent.status === 'requires_action' ||
-    (isRetry === true && paymentIntent.status === 'requires_payment_method')
-  ) {
-    return stripe
-      .confirmCardPayment(paymentIntent.client_secret, {
-        payment_method: paymentMethodId,
-      })
-      .then((result) => {
-        if (result.error) {
-          // start code flow to handle updating the payment details
-          // Display error message in your UI.
-          // The card was declined (i.e. insufficient funds, card has expired, etc)
-          throw result;
-        } else {
-          if (result.paymentIntent.status === 'succeeded') {
-            // There's a risk of the customer closing the window before callback
-            // execution. To handle this case, set up a webhook endpoint and
-            // listen to invoice.paid. This webhook endpoint returns an Invoice.
-            return {
-              priceId: priceId,
-              subscription: subscription,
-              invoice: invoice,
-              paymentMethodId: paymentMethodId,
-            };
-          }
-        }
-      });
-  } else {
-    // No customer action needed
-    return { subscription, priceId, paymentMethodId };
-  }
+  return stripe
+    .handleCardAction(paymentIntent.client_secret)
+    .then((result) => {
+      if (result.error) {
+        // start code flow to handle updating the payment details
+        // Display error message in your UI.
+        // The card was declined (i.e. insufficient funds, card has expired, etc)
+        throw result;
+      } else {
+        return result.payment_intent
+      }
+    });
 }
 
 function handleRequiresPaymentMethod({
@@ -373,7 +391,29 @@ function onSubscriptionComplete(result) {
   // Get the product by using result.subscription.price.product
 }
 
-function createSubscription({ customerId, paymentMethodId, priceId }) {
+function createSubscription({ customerId, priceId }) {
+  return (
+    fetch('/create-subscription', {
+      method: 'post',
+      headers: {
+        'Content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customerId: customerId,
+        priceId: priceId,
+      }),
+    })
+      .then((response) => {
+        console.log('got response')
+        console.dir(response);
+        return response.json();
+      })
+      .catch((error) => {
+        // An error has happened. Display the failure to the user here.
+        // We utilize the HTML element we created.
+        displayError(error);
+      })
+  );
   return (
     fetch('/create-subscription', {
       method: 'post',
