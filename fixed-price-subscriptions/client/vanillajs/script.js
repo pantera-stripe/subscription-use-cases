@@ -89,7 +89,7 @@ function stripeElements(publishableKey) {
         .then(handleRequiresPaymentMethod)
         // handle confirm? See if there is a scenario where this actually happens
         .then((result) => {
-          // TODO: set as default payment method on customer
+          // TODO: set as default payment method on customer in the complete callback
           onSubscriptionComplete({
             priceId,
             subscriptionId,
@@ -152,6 +152,29 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
     })
 }
 
+function createSubscription({ customerId, priceId }) {
+  return (
+    fetch('/create-subscription', {
+      method: 'post',
+      headers: {
+        'Content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customerId: customerId,
+        priceId: priceId,
+      }),
+    })
+      .then((response) => {
+        return response.json();
+      })
+      .catch((error) => {
+        // An error has happened. Display the failure to the user here.
+        // We utilize the HTML element we created.
+        displayError(error);
+      })
+  );
+}
+
 function pay({clientSecret, card}) {
   const billingName = document.querySelector('#name').value;
   return stripe.confirmCardPayment(clientSecret, {
@@ -174,45 +197,30 @@ function pay({clientSecret, card}) {
   })
 }
 
-// TODO: this goes away entirely
-function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
-  const params = new URLSearchParams(document.location.search.substring(1));
-  const customerId = params.get('customerId');
-  // Set up payment method for recurring usage
-  let billingName = document.querySelector('#name').value;
-
-  let priceId = document.getElementById('priceId').innerHTML.toUpperCase();
-
-  stripe
-    .createPaymentMethod({
-      type: 'card',
-      card: card,
-      billing_details: {
-        name: billingName,
-      },
-    })
+function handlePaymentThatRequiresCustomerAction(paymentIntent) {
+  if (paymentIntent.status !== 'requires_action') {
+    return paymentIntent
+  }
+  return stripe
+    .handleCardAction(paymentIntent.client_secret)
     .then((result) => {
       if (result.error) {
-        displayError(result);
+        // start code flow to handle updating the payment details
+        // Display error message in your UI.
+        // The card was declined (i.e. insufficient funds, card has expired, etc)
+        throw result;
       } else {
-        if (isPaymentRetry) {
-          // Update the payment method and retry invoice payment
-          retryInvoiceWithNewPaymentMethod({
-            customerId: customerId,
-            paymentMethodId: result.paymentMethod.id,
-            invoiceId: invoiceId,
-            priceId: priceId,
-          });
-        } else {
-          // Create the subscription
-          createSubscription({
-            customerId: customerId,
-            paymentMethodId: result.paymentMethod.id,
-            priceId: priceId,
-          });
-        }
+        return result.payment_intent
       }
     });
+}
+
+function handleRequiresPaymentMethod(paymentIntent) {
+  if (paymentIntent.status === 'requires_payment_method') {
+    throw { error: { message: 'Your card was declined.' } };
+  } else {
+    return paymentIntent
+  }
 }
 
 function selectPrice(priceId) {
@@ -341,32 +349,6 @@ function createCustomer() {
     });
 }
 
-function handlePaymentThatRequiresCustomerAction(paymentIntent) {
-  if (paymentIntent.status !== 'requires_action') {
-    return paymentIntent
-  }
-  return stripe
-    .handleCardAction(paymentIntent.client_secret)
-    .then((result) => {
-      if (result.error) {
-        // start code flow to handle updating the payment details
-        // Display error message in your UI.
-        // The card was declined (i.e. insufficient funds, card has expired, etc)
-        throw result;
-      } else {
-        return result.payment_intent
-      }
-    });
-}
-
-function handleRequiresPaymentMethod(paymentIntent) {
-  if (paymentIntent.status === 'requires_payment_method') {
-    throw { error: { message: 'Your card was declined.' } };
-  } else {
-    return paymentIntent
-  }
-}
-
 function onSubscriptionComplete(result) {
   console.log(result);
   // Payment was successful. Provision access to your service.
@@ -377,85 +359,6 @@ function onSubscriptionComplete(result) {
   // Call your backend to grant access to your service based on
   // the product your customer subscribed to.
   // Get the product by using result.subscription.price.product
-}
-
-function createSubscription({ customerId, priceId }) {
-  return (
-    fetch('/create-subscription', {
-      method: 'post',
-      headers: {
-        'Content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        customerId: customerId,
-        priceId: priceId,
-      }),
-    })
-      .then((response) => {
-        return response.json();
-      })
-      .catch((error) => {
-        // An error has happened. Display the failure to the user here.
-        // We utilize the HTML element we created.
-        displayError(error);
-      })
-  );
-}
-
-// This function goes away entirely
-function retryInvoiceWithNewPaymentMethod({
-  customerId,
-  paymentMethodId,
-  invoiceId,
-  priceId,
-}) {
-  return (
-    fetch('/retry-invoice', {
-      method: 'post',
-      headers: {
-        'Content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        customerId: customerId,
-        paymentMethodId: paymentMethodId,
-        invoiceId: invoiceId,
-      }),
-    })
-      .then((response) => {
-        return response.json();
-      })
-      // If the card is declined, display an error to the user.
-      .then((result) => {
-        if (result.error) {
-          // The card had an error when trying to attach it to a customer
-          throw result;
-        }
-        return result;
-      })
-      // Normalize the result to contain the object returned
-      // by Stripe. Add the addional details we need.
-      .then((result) => {
-        return {
-          // Use the Stripe 'object' property on the
-          // returned result to understand what object is returned.
-          invoice: result,
-          paymentMethodId: paymentMethodId,
-          priceId: priceId,
-          isRetry: true,
-        };
-      })
-      // Some payment methods require a customer to be on session
-      // to complete the payment process. Check the status of the
-      // payment intent to handle these actions.
-      .then(handlePaymentThatRequiresCustomerAction)
-      // No more actions required. Provision your service for the user.
-      .then(onSubscriptionComplete)
-      .catch((error) => {
-        // An error has happened. Display the failure to the user here.
-        // We utilize the HTML element we created.
-        displayError(error);
-      })
-  );
 }
 
 // TODO: is this needed? Can we complete flow without getting the upcoming invoice?
@@ -612,6 +515,7 @@ function getCustomersPaymentMethod() {
   }
 }
 
+// TODO: why is this here? It should only be relevant on the account page.
 getCustomersPaymentMethod();
 
 // Shows the cancellation response
