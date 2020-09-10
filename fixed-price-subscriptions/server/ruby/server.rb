@@ -37,14 +37,13 @@ post '/create-subscription' do
   content_type 'application/json'
   data = JSON.parse request.body.read
 
-  # TODO: cancel the previous incomplete subscription if it's specified
-
   # Create the subscription
   subscription =
     Stripe::Subscription.create(
       customer: data['customerId'],
       items: [{ price: ENV[data['priceId'].upcase] }],
-      # Must request to be flagged into default_incomplete
+      # default_incomplete is a preview feature
+      # Must request activation of this feature
       payment_behavior: 'default_incomplete',
       expand: %w[latest_invoice.payment_intent]
     )
@@ -69,6 +68,18 @@ post '/retrieve-upcoming-invoice' do
     )
 
   invoice.to_json
+end
+
+post '/set-default-payment-method' do
+  content_type 'application/json'
+  data = JSON.parse request.body.read
+
+  customer =
+    Stripe::Customer.update(
+      data['customerId'],
+      invoice_settings: { default_payment_method: data['paymentMethodId'] }
+    )
+  customer.to_json
 end
 
 post '/cancel-subscription' do

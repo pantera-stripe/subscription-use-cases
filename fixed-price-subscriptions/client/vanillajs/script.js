@@ -358,6 +358,7 @@ function createCustomer() {
 
 function onSubscriptionComplete(result) {
   console.log(result);
+  const {customerId, paymentMethodId} = result;
   // Payment was successful. Provision access to your service.
   // Also, set this new payment method as their customer's default
   // for this and future subscriptions.
