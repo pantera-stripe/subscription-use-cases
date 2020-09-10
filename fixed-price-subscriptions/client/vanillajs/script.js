@@ -110,7 +110,11 @@ function stripeElements(publishableKey) {
           }
         })
       })
-
+      .catch((error) => {
+        // An error while creating the subscription. Display the failure to the user here.
+        // We utilize the HTML element we created.
+        displayError(error);
+      })
     });
   }
 }
@@ -129,12 +133,20 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
   const subscriptionId = localStorage.getItem('incompleteSubscriptionId');
   const currentPeriodEnd = localStorage.getItem('currentPeriodEnd');
   const clientSecret = localStorage.getItem('clientSecret');
-  if (subscriptionId && currentPeriodEnd && clientSecret) {
+  const incompleteSubscriptionPriceId = localStorage.getItem('incompleteSubscriptionPriceId');
+  const subscriptionInCache = subscriptionId && currentPeriodEnd && clientSecret;
+  const priceIdChanged = subscriptionInCache && (priceId !== incompleteSubscriptionPriceId);
+
+  if (subscriptionInCache && !priceIdChanged) {
     return {clientSecret, subscriptionId, currentPeriodEnd};
   }
-  console.log('Subscription not cached in local storage. Create one.');
-  // TODO: handle creating a new subscription if the price changes
-
+  
+  if (priceIdChanged) {
+    // Customer may have gone back and changed their plan after an incomplete subscription was created for that plan.
+    // Clean up that subscription by cancelling it. Don't need to wait on this response.
+    cancelSubsciptionApiCall(subscriptionId);
+  }
+  
   return createSubscription({customerId, priceId})
     .then((subscription) => {
       if (subscription) {
@@ -142,6 +154,7 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
         localStorage.setItem('clientSecret', subscription.latest_invoice.payment_intent.client_secret);
         localStorage.setItem('incompleteSubscriptionId', subscription.id);
         localStorage.setItem('currentPeriodEnd', subscription.current_period_end);
+        localStorage.setItem('incompleteSubscriptionPriceId', priceId);
         return {
           clientSecret: subscription.latest_invoice.payment_intent.client_secret,
           subscriptionId: subscription.id, 
@@ -152,27 +165,20 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
     })
 }
 
-function createSubscription({ customerId, priceId }) {
-  return (
-    fetch('/create-subscription', {
+async function createSubscription({ customerId, priceId }) {
+  return fetch('/create-subscription', {
       method: 'post',
       headers: {
         'Content-type': 'application/json',
       },
       body: JSON.stringify({
-        customerId: customerId,
-        priceId: priceId,
+        customerId,
+        priceId,
       }),
     })
-      .then((response) => {
-        return response.json();
-      })
-      .catch((error) => {
-        // An error has happened. Display the failure to the user here.
-        // We utilize the HTML element we created.
-        displayError(error);
-      })
-  );
+    .then((response) => {
+      return response.json();
+    })
 }
 
 function pay({clientSecret, card}) {
@@ -382,11 +388,7 @@ function retrieveUpcomingInvoice(customerId, subscriptionId, newPriceId) {
     });
 }
 
-function cancelSubscription() {
-  changeLoadingStatePrices(true);
-  const params = new URLSearchParams(document.location.search.substring(1));
-  const subscriptionId = params.get('subscriptionId');
-
+async function cancelSubsciptionApiCall(subscriptionId) {
   return fetch('/cancel-subscription', {
     method: 'post',
     headers: {
@@ -399,6 +401,13 @@ function cancelSubscription() {
     .then((response) => {
       return response.json();
     })
+}
+function cancelSubscription() {
+  changeLoadingStatePrices(true);
+  const params = new URLSearchParams(document.location.search.substring(1));
+  const subscriptionId = params.get('subscriptionId');
+
+  return cancelSubsciptionApiCall(subscriptionId)
     .then((cancelSubscriptionResponse) => {
       return subscriptionCancelled(cancelSubscriptionResponse);
     });
