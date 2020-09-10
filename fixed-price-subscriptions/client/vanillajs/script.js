@@ -68,11 +68,6 @@ function stripeElements(publishableKey) {
     });
   }
 
-  const pricePicker = document.getElementById('price-picker');
-  if (pricePicker) {
-    setSelectedPrice();
-  }
-
   const paymentForm = document.getElementById('payment-form');
   if (paymentForm) {
     paymentForm.addEventListener('submit', function (evt) {
@@ -83,7 +78,7 @@ function stripeElements(publishableKey) {
       const params = new URLSearchParams(window.location.search);
       const customerId = params.get('customerId');
       
-      const priceId = document.getElementById('priceId').innerHTML.toUpperCase();
+      const priceId = getPriceId();
       getOrCreateIncompleteSubscription({customerId, priceId})
       .then(({clientSecret, subscriptionId, currentPeriodEnd}) =>  {
         // TODO: might be simpler to structure this as if/then instead of cascading handlers
@@ -94,6 +89,7 @@ function stripeElements(publishableKey) {
         .then(handleRequiresPaymentMethod)
         // handle confirm? See if there is a scenario where this actually happens
         .then((result) => {
+          // TODO: set as default payment method on customer
           onSubscriptionComplete({
             priceId,
             subscriptionId,
@@ -136,12 +132,11 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
   if (subscriptionId && currentPeriodEnd && clientSecret) {
     return {clientSecret, subscriptionId, currentPeriodEnd};
   }
-  console.log('Creating subscription because it does not already exist');
+  console.log('Subscription not cached in local storage. Create one.');
   // TODO: handle creating a new subscription if the price changes
 
   return createSubscription({customerId, priceId})
     .then((subscription) => {
-      console.log('saving subscription in local storage')
       if (subscription) {
         // Caching for responsiveness. Could take simpler approach and re-fetch the subscription/payment intent to get latest state.
         localStorage.setItem('clientSecret', subscription.latest_invoice.payment_intent.client_secret);
@@ -220,10 +215,8 @@ function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
     });
 }
 
-function setSelectedPrice() {
+function selectPrice(priceId) {
   // Show which price the user selected
-  let searchParams = new URLSearchParams(window.location.search);
-  let priceId = searchParams.get('priceId');
   if (priceId === 'premium') {
     document.querySelector('#submit-premium-button-text').innerText =
       'Selected';
@@ -236,18 +229,9 @@ function setSelectedPrice() {
   } else {
     document.querySelector('#submit-price').disabled = true;
   }
-
+  setPriceId(priceId);
   // Update the border to show which price is selected
   changePriceSelection(priceId);
-}
-
-function selectPrice(priceId) {
-  // TODO: change this to local storage. Setting the URL reloads the page
-  // and snaps back to the top. Could also do pushState if we want to retain back
-  // button functionality.
-  let searchParams = new URLSearchParams(window.location.search);
-  searchParams.set('priceId', priceId);
-  window.location.search = searchParams.toString();
 }
 
 function goToPaymentPage() {
@@ -255,7 +239,7 @@ function goToPaymentPage() {
   document.querySelector('#payment-view').classList.remove('hidden');
   document.querySelector('#price-picker').classList.add('hidden');
 
-  let priceId = new URLSearchParams(window.location.search).get('priceId');;
+  const priceId = getPriceId();
   document.getElementById('total-due-now').innerText = getFormattedAmount(
     priceInfo[priceId].amount
   );
@@ -738,6 +722,14 @@ function changeLoadingStatePrices(isLoading) {
         .classList.remove('invisible');
     }
   }
+}
+
+function getPriceId() {
+  return localStorage.getItem('priceId');
+}
+
+function setPriceId(priceId) {
+  localStorage.setItem('priceId', priceId);
 }
 
 function clearCache() {
