@@ -68,7 +68,7 @@ function stripeElements(publishableKey) {
     });
   }
 
-  let pricePicker = document.getElementById('price-picker');
+  const pricePicker = document.getElementById('price-picker');
   if (pricePicker) {
     setSelectedPrice();
   }
@@ -80,30 +80,40 @@ function stripeElements(publishableKey) {
       // TODO: Now that price picker is split from the payment form, is this needed?
       changeLoadingStatePrices(true);
 
-      console.log('handling price submit');
       const params = new URLSearchParams(window.location.search);
       const customerId = params.get('customerId');
       
       const priceId = document.getElementById('priceId').innerHTML.toUpperCase();
       getOrCreateIncompleteSubscription({customerId, priceId})
-        .then(function(incompleteSubscription) {
-          const {payment_intent: paymentIntent} = incompleteSubscription.latest_invoice;
-          pay({paymentIntent, card})
-        })
-        // TODO: this should deal with requires action
+      .then(({clientSecret, subscriptionId, currentPeriodEnd}) =>  {
+        // TODO: might be simpler to structure this as if/then instead of cascading handlers
+        // Pay using the payment information colllected from the user. Successful payment with automatically
+        // activate the subscription.
+        pay({clientSecret, card})
         .then(handlePaymentThatRequiresCustomerAction)
-        // handle any payment errors thrown and allow the customer to re-submit their payment information
-        // then handle requires payment
-        // handle confirm?
-        // handle success
+        .then(handleRequiresPaymentMethod)
+        // handle confirm? See if there is a scenario where this actually happens
+        .then((result) => {
+          onSubscriptionComplete({
+            priceId,
+            subscriptionId,
+            currentPeriodEnd,
+            customerId,
+            paymentMethodId: result.payment_method,
+          })
+        })
+        // Do we need a fallback in case we neither reach success nor throw?
         .catch((result) => {
           const {error}  = result;
           if (error) {
-            displayError(error)
+            displayError({error})
           } else {
-            displayError("Unexpected error. Try again.")
+            console.log('Payment handling unexpected error');
+            console.log(result);
+            displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
           }
         })
+      })
 
     });
   }
@@ -119,26 +129,38 @@ function displayError(event) {
   }
 }
 
-function getOrCreateIncompleteSubscription({customerId, priceId}) {
-  const incompleteSubscription = localStorage.getItem('incompleteSubscription');
-  if (incompleteSubscription) return incompleteSubscription;
+async function getOrCreateIncompleteSubscription({customerId, priceId}) {
+  const subscriptionId = localStorage.getItem('incompleteSubscriptionId');
+  const currentPeriodEnd = localStorage.getItem('currentPeriodEnd');
+  const clientSecret = localStorage.getItem('clientSecret');
+  if (subscriptionId && currentPeriodEnd && clientSecret) {
+    return {clientSecret, subscriptionId, currentPeriodEnd};
+  }
   console.log('Creating subscription because it does not already exist');
   // TODO: handle creating a new subscription if the price changes
 
   return createSubscription({customerId, priceId})
-    .then(function(subscription) {
+    .then((subscription) => {
       console.log('saving subscription in local storage')
       if (subscription) {
-        localStorage.setItem('incompleteSubscription', subscription);
+        // Caching for responsiveness. Could take simpler approach and re-fetch the subscription/payment intent to get latest state.
+        localStorage.setItem('clientSecret', subscription.latest_invoice.payment_intent.client_secret);
+        localStorage.setItem('incompleteSubscriptionId', subscription.id);
+        localStorage.setItem('currentPeriodEnd', subscription.current_period_end);
+        return {
+          clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+          subscriptionId: subscription.id, 
+          currentPeriodEnd: subscription.current_period_end};
+      } else {
+        throw {error: {message: 'There was a problem creating the subscription.'}}
       }
-      return subscription;
     })
 }
 
-function pay({paymentIntent, card}) {
+function pay({clientSecret, card}) {
   const billingName = document.querySelector('#name').value;
-  return stripe.confirmCardPayment(paymentIntent.client_secret, {
-    paymentMethod: {
+  return stripe.confirmCardPayment(clientSecret, {
+    payment_method: {
       card,
       billing_details: {
         name: billingName,
@@ -157,6 +179,7 @@ function pay({paymentIntent, card}) {
   })
 }
 
+// TODO: this goes away entirely
 function createPaymentMethod({ card, isPaymentRetry, invoiceId }) {
   const params = new URLSearchParams(document.location.search.substring(1));
   const customerId = params.get('customerId');
@@ -222,7 +245,6 @@ function selectPrice(priceId) {
   // TODO: change this to local storage. Setting the URL reloads the page
   // and snaps back to the top. Could also do pushState if we want to retain back
   // button functionality.
-  // For the demo just store selected price as a URL param.
   let searchParams = new URLSearchParams(window.location.search);
   searchParams.set('priceId', priceId);
   window.location.search = searchParams.toString();
@@ -353,29 +375,11 @@ function handlePaymentThatRequiresCustomerAction(paymentIntent) {
     });
 }
 
-function handleRequiresPaymentMethod({
-  subscription,
-  paymentMethodId,
-  priceId,
-}) {
-  if (subscription.status === 'active') {
-    // subscription is active, no customer actions required.
-    return { subscription, priceId, paymentMethodId };
-  } else if (
-    subscription.latest_invoice.payment_intent.status ===
-    'requires_payment_method'
-  ) {
-    // Using localStorage to store the state of the retry here
-    // (feel free to replace with what you prefer)
-    // Store the latest invoice ID and status
-    localStorage.setItem('latestInvoiceId', subscription.latest_invoice.id);
-    localStorage.setItem(
-      'latestInvoicePaymentIntentStatus',
-      subscription.latest_invoice.payment_intent.status
-    );
+function handleRequiresPaymentMethod(paymentIntent) {
+  if (paymentIntent.status === 'requires_payment_method') {
     throw { error: { message: 'Your card was declined.' } };
   } else {
-    return { subscription, priceId, paymentMethodId };
+    return paymentIntent
   }
 }
 
@@ -404,60 +408,8 @@ function createSubscription({ customerId, priceId }) {
       }),
     })
       .then((response) => {
-        console.log('got response')
-        console.dir(response);
         return response.json();
       })
-      .catch((error) => {
-        // An error has happened. Display the failure to the user here.
-        // We utilize the HTML element we created.
-        displayError(error);
-      })
-  );
-  return (
-    fetch('/create-subscription', {
-      method: 'post',
-      headers: {
-        'Content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        customerId: customerId,
-        paymentMethodId: paymentMethodId,
-        priceId: priceId,
-      }),
-    })
-      .then((response) => {
-        return response.json();
-      })
-      // If the card is declined, display an error to the user.
-      .then((result) => {
-        if (result.error) {
-          // The card had an error when trying to attach it to a customer
-          throw result;
-        }
-        return result;
-      })
-      // Normalize the result to contain the object returned
-      // by Stripe. Add the addional details we need.
-      .then((result) => {
-        return {
-          // Use the Stripe 'object' property on the
-          // returned result to understand what object is returned.
-          subscription: result,
-          paymentMethodId: paymentMethodId,
-          priceId: priceId,
-        };
-      })
-      // Some payment methods require a customer to do additional
-      // authentication with their financial institution.
-      // Eg: 2FA for cards.
-      .then(handlePaymentThatRequiresCustomerAction)
-      // If attaching this card to a Customer object succeeds,
-      // but attempts to charge the customer fail. You will
-      // get a requires_payment_method error.
-      .then(handleRequiresPaymentMethod)
-      // No more actions required. Provision your service for the user.
-      .then(onSubscriptionComplete)
       .catch((error) => {
         // An error has happened. Display the failure to the user here.
         // We utilize the HTML element we created.
@@ -466,6 +418,7 @@ function createSubscription({ customerId, priceId }) {
   );
 }
 
+// This function goes away entirely
 function retryInvoiceWithNewPaymentMethod({
   customerId,
   paymentMethodId,
@@ -521,6 +474,7 @@ function retryInvoiceWithNewPaymentMethod({
   );
 }
 
+// TODO: is this needed? Can we complete flow without getting the upcoming invoice?
 function retrieveUpcomingInvoice(customerId, subscriptionId, newPriceId) {
   return fetch('/retrieve-upcoming-invoice', {
     method: 'post',
@@ -684,29 +638,12 @@ function subscriptionCancelled() {
 
 /* Shows a success / error message when the payment is complete */
 function onSubscriptionSampleDemoComplete({
-  priceId: priceId,
-  subscription: subscription,
-  paymentMethodId: paymentMethodId,
-  invoice: invoice,
+  customerId,
+  priceId,
+  subscriptionId,
+  currentPeriodEnd,
+  paymentMethodId,
 }) {
-  let subscriptionId;
-  let currentPeriodEnd;
-  let customerId;
-  if (subscription) {
-    subscriptionId = subscription.id;
-    currentPeriodEnd = subscription.current_period_end;
-    if (typeof subscription.customer === 'object') {
-      customerId = subscription.customer.id;
-    } else {
-      customerId = subscription.customer;
-    }
-  } else {
-    const params = new URLSearchParams(document.location.search.substring(1));
-    subscriptionId = invoice.subscription;
-    currentPeriodEnd = params.get('currentPeriodEnd');
-    customerId = invoice.customer;
-  }
-
   window.location.href =
     '/account.html?subscriptionId=' +
     subscriptionId +
