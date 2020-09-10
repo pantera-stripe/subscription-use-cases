@@ -81,46 +81,46 @@ function stripeElements(publishableKey) {
       const priceId = getPriceId();
       getOrCreateIncompleteSubscription({customerId, priceId})
       .then(({clientSecret, subscriptionId, currentPeriodEnd}) =>  {
-        // TODO: might be simpler to structure this as if/then instead of cascading handlers
-        // Pay using the payment information colllected from the user. Successful payment with automatically
+        // Pay using the payment information colllected from the user. Successful payment will automatically
         // activate the subscription.
         pay({clientSecret, card})
-        .then(handlePaymentThatRequiresCustomerAction)
-        .then(handleRequiresPaymentMethod)
-        // handle confirm? See if there is a scenario where this actually happens
-        .then((result) => {
-          // TODO: set as default payment method on customer in the complete callback
-          onSubscriptionComplete({
-            priceId,
-            subscriptionId,
-            currentPeriodEnd,
-            customerId,
-            paymentMethodId: result.payment_method,
+          // This can also be structured this as if/then clauses rather than cascading handlers
+          .then(handlePaymentThatRequiresCustomerAction)
+          .then(handleRequiresPaymentMethod)
+          // TODO: handle confirm? See if there is a scenario where this actually happens
+          .then((result) => {
+            // TODO: set as default payment method on customer in the complete callback
+            onSubscriptionComplete({
+              priceId,
+              subscriptionId,
+              currentPeriodEnd,
+              customerId,
+              paymentMethodId: result.payment_method,
+            })
           })
-        })
-        // Do we need a fallback in case we neither reach success nor throw?
-        .catch((result) => {
-          const {error}  = result;
-          if (error) {
-            displayError({error})
-          } else {
-            console.log('Payment handling unexpected error');
-            console.log(result);
-            displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
-          }
-        })
+          // catch for pay or any of the handlers in that chain
+          .catch((result) => {
+            const {error}  = result;
+            if (error) {
+              displayError({error})
+            } else {
+              console.log('Payment handling unexpected error');
+              console.log(result);
+              displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
+            }
+          });
       })
+      // catch for getOrCreateIncompleteSubscription
       .catch((error) => {
-        // An error while creating the subscription. Display the failure to the user here.
-        // We utilize the HTML element we created.
         displayError(error);
-      })
+      });
     });
   }
 }
 
 function displayError(event) {
   changeLoadingStatePrices(false);
+  // Display the failure to the user here. Utilize the HTML element we created.
   let displayError = document.getElementById('card-element-errors');
   if (event.error) {
     displayError.textContent = event.error.message;
@@ -137,6 +137,7 @@ async function getOrCreateIncompleteSubscription({customerId, priceId}) {
   const subscriptionInCache = subscriptionId && currentPeriodEnd && clientSecret;
   const priceIdChanged = subscriptionInCache && (priceId !== incompleteSubscriptionPriceId);
 
+  // As a shortcut, return cached info from local storage if we can.
   if (subscriptionInCache && !priceIdChanged) {
     return {clientSecret, subscriptionId, currentPeriodEnd};
   }
@@ -358,6 +359,10 @@ function createCustomer() {
 function onSubscriptionComplete(result) {
   console.log(result);
   // Payment was successful. Provision access to your service.
+  // Also, set this new payment method as their customer's default
+  // for this and future subscriptions.
+  setDefaultPaymentMethod({customerId, paymentMethodId});
+
   // Remove invoice from localstorage because payment is now complete.
   clearCache();
   // Change your UI to show a success message to your customer.
@@ -367,7 +372,22 @@ function onSubscriptionComplete(result) {
   // Get the product by using result.subscription.price.product
 }
 
-// TODO: is this needed? Can we complete flow without getting the upcoming invoice?
+async function setDefaultPaymentMethod({customerId, paymentMethodId}) {
+  return fetch('/set-default-payment-method',  {
+    method: 'post',
+    headers: {
+      'Content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      customerId,
+      paymentMethodId,
+    }),
+  })
+    .then((response) => {
+      return response.json();
+    });
+}
+
 function retrieveUpcomingInvoice(customerId, subscriptionId, newPriceId) {
   return fetch('/retrieve-upcoming-invoice', {
     method: 'post',
