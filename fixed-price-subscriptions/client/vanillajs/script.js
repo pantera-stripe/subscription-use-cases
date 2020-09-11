@@ -84,7 +84,8 @@ function stripeElements(publishableKey) {
         // activate the subscription.
         pay({clientSecret, card})
           // This can also be structured this as if/then clauses rather than cascading handlers
-          .then(handlePaymentThatRequiresCustomerAction)
+          // .then(handlePaymentThatRequiresCustomerAction)
+          // TODO: Collapse handleRequiresPaymentMethod into the pay error handler.
           .then(handleRequiresPaymentMethod)
           // TODO: handle confirm? See if there is a scenario where this actually happens
           .then((result) => {
@@ -198,11 +199,12 @@ function pay({clientSecret, card}) {
       // The card was declined (i.e. insufficient funds, card has expired, etc)
       throw result;
     } else {
-      return result.payment_intent;
+      return result.paymentIntent;
     }
   })
 }
 
+// TODO: Remove. It looks like confirmCardPayment handles 3DS
 function handlePaymentThatRequiresCustomerAction(paymentIntent) {
   if (paymentIntent.status !== 'requires_action') {
     return paymentIntent
@@ -620,12 +622,12 @@ function changePriceSelection(priceId) {
 // Show a spinner on subscription submission
 function changeLoadingState(isLoading) {
   if (isLoading) {
-    document.querySelector('#button-text').classList.add('hidden');
-    document.querySelector('#loading').classList.remove('hidden');
+    document.querySelector('#signup-form #button-text').classList.add('hidden');
+    document.querySelector('#signup-form #loading-text').classList.remove('hidden');
     document.querySelector('#signup-form button').disabled = true;
   } else {
-    document.querySelector('#button-text').classList.remove('hidden');
-    document.querySelector('#loading').classList.add('hidden');
+    document.querySelector('#signup-form #button-text').classList.remove('hidden');
+    document.querySelector('#signup-form #loading-text').classList.add('hidden');
     document.querySelector('#signup-form button').disabled = false;
   }
 }
