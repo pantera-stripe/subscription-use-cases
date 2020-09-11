@@ -83,13 +83,7 @@ function stripeElements(publishableKey) {
         // Pay using the payment information colllected from the user. Successful payment will automatically
         // activate the subscription.
         pay({clientSecret, card})
-          // This can also be structured this as if/then clauses rather than cascading handlers
-          // .then(handlePaymentThatRequiresCustomerAction)
-          // TODO: Collapse handleRequiresPaymentMethod into the pay error handler.
-          .then(handleRequiresPaymentMethod)
-          // TODO: handle confirm? See if there is a scenario where this actually happens
           .then((result) => {
-            // TODO: set as default payment method on customer in the complete callback
             onSubscriptionComplete({
               priceId,
               subscriptionId,
@@ -98,21 +92,16 @@ function stripeElements(publishableKey) {
               paymentMethodId: result.payment_method,
             })
           })
-          // catch for pay or any of the handlers in that chain
-          .catch((result) => {
-            const {error}  = result;
-            if (error) {
-              displayError({error})
-            } else {
-              console.log('Payment handling unexpected error');
-              console.log(result);
-              displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
-            }
-          });
       })
-      // catch for getOrCreateIncompleteSubscription
-      .catch((error) => {
-        displayError(error);
+      .catch((result) => {
+        const {error}  = result;
+        if (error) {
+          displayError({error})
+        } else {
+          console.log('Handling unexpected error');
+          console.log(result);
+          displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
+        }
       });
     });
   }
@@ -194,41 +183,13 @@ function pay({clientSecret, card}) {
   })
   .then((result) => {
     if (result.error) {
-      // start code flow to handle updating the payment details
       // Display error message in your UI.
-      // The card was declined (i.e. insufficient funds, card has expired, etc)
+      // The card was declined (i.e. insufficient funds, card has expired, failed 3DS authentication, etc)
       throw result;
     } else {
       return result.paymentIntent;
     }
   })
-}
-
-// TODO: Remove. It looks like confirmCardPayment handles 3DS
-function handlePaymentThatRequiresCustomerAction(paymentIntent) {
-  if (paymentIntent.status !== 'requires_action') {
-    return paymentIntent
-  }
-  return stripe
-    .handleCardAction(paymentIntent.client_secret)
-    .then((result) => {
-      if (result.error) {
-        // start code flow to handle updating the payment details
-        // Display error message in your UI.
-        // The card was declined (i.e. insufficient funds, card has expired, etc)
-        throw result;
-      } else {
-        return result.payment_intent
-      }
-    });
-}
-
-function handleRequiresPaymentMethod(paymentIntent) {
-  if (paymentIntent.status === 'requires_payment_method') {
-    throw { error: { message: 'Your card was declined.' } };
-  } else {
-    return paymentIntent
-  }
 }
 
 function selectPrice(priceId) {
