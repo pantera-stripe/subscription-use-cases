@@ -635,9 +635,9 @@ video {
 }
 
 .loading {
-  width: 30px;
-  height: 30px;
-  border: 3px solid rgba(0, 0, 0, 0.3);
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0, 0, 0, 0.3);
   border-radius: 50%;
   border-top-color: #ed5f74;
   animation: spin 1s ease-in-out infinite;

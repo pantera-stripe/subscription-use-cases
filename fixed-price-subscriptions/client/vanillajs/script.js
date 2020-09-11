@@ -72,7 +72,6 @@ function stripeElements(publishableKey) {
   if (paymentForm) {
     paymentForm.addEventListener('submit', function (evt) {
       evt.preventDefault();
-      // TODO: Now that price picker is split from the payment form, is this needed?
       changeLoadingStatePrices(true);
 
       const params = new URLSearchParams(window.location.search);
@@ -199,7 +198,7 @@ function pay({clientSecret, card}) {
       // The card was declined (i.e. insufficient funds, card has expired, etc)
       throw result;
     } else {
-      return result.paymentIntent;
+      return result.payment_intent;
     }
   })
 }
@@ -284,7 +283,7 @@ function switchPrices(newPriceIdSelected) {
   // Update the border to show which price is selected
   changePriceSelection(newPriceIdSelected);
 
-  changeLoadingStatePrices(true);
+  changeLoadingStateAccountPage(true);
 
   // Retrieve the upcoming invoice to display details about
   // the price change
@@ -310,7 +309,7 @@ function switchPrices(newPriceIdSelected) {
         'new-price-start-date'
       ).innerHTML = nextPaymentAttemptDateToDisplay;
 
-      changeLoadingStatePrices(false);
+      changeLoadingStateAccountPage(false);
     }
   );
 
@@ -366,6 +365,9 @@ function onSubscriptionComplete(result) {
 
   // Remove invoice from localstorage because payment is now complete.
   clearCache();
+
+  changeLoadingStatePrices(false);
+
   // Change your UI to show a success message to your customer.
   onSubscriptionSampleDemoComplete(result);
   // Call your backend to grant access to your service based on
@@ -424,7 +426,7 @@ async function cancelSubsciptionApiCall(subscriptionId) {
     })
 }
 function cancelSubscription() {
-  changeLoadingStatePrices(true);
+  changeLoadingStateAccountPage(true);
   const params = new URLSearchParams(document.location.search.substring(1));
   const subscriptionId = params.get('subscriptionId');
 
@@ -629,7 +631,7 @@ function changeLoadingState(isLoading) {
 }
 
 // Show a spinner on subscription submission
-function changeLoadingStatePrices(isLoading) {
+function changeLoadingStateAccountPage(isLoading) {
   if (isLoading) {
     document.querySelector('#button-text').classList.add('hidden');
     document.querySelector('#loading').classList.remove('hidden');
@@ -658,6 +660,15 @@ function changeLoadingStatePrices(isLoading) {
   }
 }
 
+function changeLoadingStatePrices(isLoading) {
+  if (isLoading) {
+    document.querySelector('#payment-view .button-text').classList.add('hidden');
+    document.querySelector('#payment-view .loading-text').classList.remove('hidden');
+  } else {
+    document.querySelector('#payment-view .button-text').classList.remove('hidden');
+    document.querySelector('#payment-view .loading-text').classList.add('hidden');
+  }
+}
 function getPriceId() {
   return localStorage.getItem('priceId');
 }
