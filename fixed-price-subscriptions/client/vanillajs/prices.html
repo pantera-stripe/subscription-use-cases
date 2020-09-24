@@ -31,13 +31,13 @@
         </button>
       </div>
     </nav>
-    <div id="prices-and-payment" class="flex flex-wrap justify-center">
-      <div id="prices-form" class="md:w-1/3 w-full mr-4 md:mb-8">
+    <div id="prices" class="flex flex-wrap justify-center">
+      <div id="price-picker" class="md:w-1/3 w-full mr-4 md:mb-8">
         <div class="text-center text-pasha font-bold text-2xl mt-4 mb-6">
-          Subscribe to a plan
+          Select a plan
         </div>
 
-        <div id="price-picker">
+        <form id="prices-form">
           <div class="flex justify-between mb-8">
             <div
               id="basic"
@@ -64,7 +64,9 @@
                 <div class="flex justify-center mt-6">
                   <button
                     id="submit-basic"
+                    name="plan"
                     onClick="selectPrice('basic')"
+                    value="basic"
                     class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
                     type="button"
                   >
@@ -102,7 +104,9 @@
                 <div class="flex justify-center mt-6">
                   <button
                     id="submit-premium"
+                    name="plan"
                     onClick="selectPrice('premium')"
+                    value="premium"
                     class="bg-pasha hover:bg-white outline-none hover:text-pasha hover:border hover:border-black text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-lg"
                     type="button"
                   >
@@ -118,89 +122,22 @@
             </div>
           </div>
           <div class="w-full flex justify-center">
+            <div id="subscription-creation-errors" class="text-gray-700 text-base mt-2" role="alert"
+          ></div>
             <button
               id="submit-price"
               class="w-1\/2 bg-pasha hover:bg-red-200 hover:shadow-outline hover:text-pasha hover:border hover:border-black focus:shadow-outline text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-md"
-              onClick="goToPaymentPage()"
               type="submit"
               disabled
             >
               <div class="">
-                <div class="loading-text justify-center flex hidden">
+                <div id="loading-text" class="justify-center flex hidden">
                   <span class="mr-4">Proceeding...</span>
                   <span class="loading"></span>
                 </div>
-                <span class="button-text">Proceed to payment</span>
+                <span id="button-text">Proceed to payment</span>
               </div>
             </button>
-          </div>
-        </div>
-        <div id="payment-view" class="flex justify-center hidden">
-          <div class="w-full inline-block border p-4 rounded-md">
-            <div class="font-bold text-xl mb-2">
-              Enter your card details. </br>Your subscription will start now.
-            </div>
-            <p class="font-bold text-pasha cursor-pointer">
-              <a onClick="goToPricePicker()">← Select a different plan</a>
-            </p>
-            <p class="text-gray-700 text-base">
-              → Total due now <span id="total-due-now">$0.00</span>
-            </p>
-            <p id="price-selected" class="text-gray-700 text-base mb-4"></p>
-
-            <div class="w-full">
-              <div class="flex flex-wrap -mx-3 mb-2">
-                <div class="w-full px-3 md:mb-0">
-                  <label
-                    class="block uppercase tracking-wide text-gray-700 text-xs font-bold mb-2"
-                    for="grid-first-name"
-                  >
-                    Full name
-                  </label>
-                  <input
-                    class="appearance-none block w-full bg-gray-200 border rounded-md py-3 px-2 mb-3 leading-tight focus:outline-none focus:bg-white"
-                    id="name"
-                    type="text"
-                    placeholder="First and last name"
-                    required
-                  />
-                </div>
-              </div>
-              <form id="payment-form">
-                <div class="flex flex-wrap -mx-3 mb-3">
-                  <div class="w-full px-3 mb-0">
-                    <label
-                      class="block uppercase tracking-wide text-gray-700 text-xs font-bold mb-2"
-                      for="grid-first-name"
-                    >
-                      Card
-                    </label>
-                    <div
-                      class="appearance-none block w-full bg-gray-200 text-gray-700 border rounded-md py-3 px-2 leading-tight focus:outline-none focus:bg-white"
-                      id="card-element"
-                    ></div>
-                    <div
-                      id="card-element-errors"
-                      class="text-gray-700 text-base mt-2"
-                      role="alert"
-                    ></div>
-                  </div>
-                </div>
-                <button
-                  id="submit-payment"
-                  class="w-full bg-pasha hover:bg-white hover:shadow-outline hover:text-pasha hover:border hover:border-black focus:shadow-outline text-white focus:bg-white focus:text-pasha font-light py-2 px-4 rounded-md"
-                  type="submit"
-                >
-                  <div>
-                    <div class="loading-text justify-center flex hidden">
-                      <span class="mr-4">Subscribing...</span>
-                      <div class="loading"></div>
-                    </div>
-                    <span class="button-text">Subscribe</span>
-                  </div>
-                </button>
-              </form>
-            </div>
           </div>
         </div>
       </div>

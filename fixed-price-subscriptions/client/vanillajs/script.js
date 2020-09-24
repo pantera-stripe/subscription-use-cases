@@ -19,10 +19,10 @@ function stripeElements(publishableKey) {
   stripe = Stripe(publishableKey);
 
   if (document.getElementById('card-element')) {
-    let elements = stripe.elements();
+    const elements = stripe.elements();
 
     // Card Element styles
-    let style = {
+    const style = {
       base: {
         fontSize: '16px',
         color: '#32325d',
@@ -40,12 +40,12 @@ function stripeElements(publishableKey) {
     card.mount('#card-element');
 
     card.on('focus', function () {
-      let el = document.getElementById('card-element-errors');
+      const el = document.getElementById('card-element-errors');
       el.classList.add('focused');
     });
 
     card.on('blur', function () {
-      let el = document.getElementById('card-element-errors');
+      const el = document.getElementById('card-element-errors');
       el.classList.remove('focused');
     });
 
@@ -54,7 +54,8 @@ function stripeElements(publishableKey) {
     });
   }
 
-  let signupForm = document.getElementById('signup-form');
+  // Setup signup page
+  const signupForm = document.getElementById('signup-form');
   if (signupForm) {
     signupForm.addEventListener('submit', function (evt) {
       evt.preventDefault();
@@ -68,41 +69,104 @@ function stripeElements(publishableKey) {
     });
   }
 
+  // Setup price selection page
+  const pricePicker = document.getElementById('price-picker');
+  if (pricePicker) {
+    const params = new URLSearchParams(window.location.search);
+    // Customer might have returned from the payment page to select a different price
+    const previousPricePriceId = params.get('priceId');
+    if (previousPricePriceId) {
+      // Highlight the proper price selection
+      selectPrice(previousPricePriceId);
+    }
+
+    pricePicker.addEventListener('submit', function (evt) {
+      evt.preventDefault();
+      changeLoadingStatePrices(true);
+
+      const customerId = params.get('customerId');
+      const subscriptionId = params.get('subscriptionId');
+      const priceId = getSelectedPriceId();
+      const priceChanged = priceId != previousPricePriceId;
+      const createNewSubscription = !subscriptionId || priceChanged;
+      
+      if (createNewSubscription) {
+        if (subscriptionId && priceChanged) {
+          // Customer selecting a different price before completing payment
+          // Cleanup by cancelling the previous subscription.
+          cancelSubsciptionApiCall(subscriptionId);
+        }
+
+        // Create a subscription and proceed to payment page
+        createSubscription({customerId, priceId})
+          .then((subscription) => {
+            goToPaymentPage({
+              clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+              subscriptionId: subscription.id, 
+              currentPeriodEnd: subscription.current_period_end,
+              priceId
+            });
+          })
+          // As best practice catch any unexpected errors
+          .catch((error) => {
+            document.getElementById('subscription-creation-errors').textContent = error;
+          })  
+      } else {
+        // Already have a subscription and customer did not select a different price.
+        // Just proceed to payment page.
+        const clientSecret = params.get('clientSecret');
+        const currentPeriodEnd = params.get('currentPeriodEnd');
+        goToPaymentPage({clientSecret, subscriptionId, currentPeriodEnd, priceId})
+      }
+    });
+  }
+
+  // Setup payment page
   const paymentForm = document.getElementById('payment-form');
   if (paymentForm) {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Display selected price and amount due
+    const priceId = params.get('priceId');
+    document.getElementById('total-due-now').innerText = getFormattedAmount(
+      priceInfo[priceId].amount
+    );
+    document.getElementById('price-selected').innerHTML =
+      '→ Subscribing to ' +
+      '<span id="priceId" class="font-bold">' +
+      priceInfo[priceId].name +
+      '</span>';
+
     paymentForm.addEventListener('submit', function (evt) {
       evt.preventDefault();
       changeLoadingStatePrices(true);
 
-      const params = new URLSearchParams(window.location.search);
       const customerId = params.get('customerId');
-      
-      const priceId = getPriceId();
-      getOrCreateIncompleteSubscription({customerId, priceId})
-      .then(({clientSecret, subscriptionId, currentPeriodEnd}) =>  {
-        // Pay using the payment information colllected from the user. Successful payment will automatically
-        // activate the subscription.
-        pay({clientSecret, card})
-          .then((result) => {
-            onSubscriptionComplete({
-              priceId,
-              subscriptionId,
-              currentPeriodEnd,
-              customerId,
-              paymentMethodId: result.payment_method,
-            })
+      const subscriptionId = params.get('subscriptionId');
+      const clientSecret = params.get('clientSecret');
+      const currentPeriodEnd = params.get('currentPeriodEnd');
+
+      pay({clientSecret, card})
+        .then((result) => {
+          onSubscriptionComplete({
+            priceId,
+            subscriptionId,
+            currentPeriodEnd,
+            customerId,
+            paymentMethodId: result.payment_method,
           })
-      })
-      .catch((result) => {
-        const {error}  = result;
-        if (error) {
-          displayError({error})
-        } else {
-          console.log('Handling unexpected error');
-          console.log(result);
-          displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
-        }
-      });
+        })
+        .catch((result) => {
+          const {error}  = result;
+          if (error) {
+            // Display any card submission errors and allow the user to update thier information and try again
+            displayError({error})
+          } else {
+            console.log('Handling unexpected error');
+            console.log(result);
+            displayError({ error: { message: 'Unexpected error. Try again or contact our support team.'} })
+          }
+        });
     });
   }
 }
@@ -119,39 +183,13 @@ function displayError(event) {
 }
 
 async function getOrCreateIncompleteSubscription({customerId, priceId}) {
-  const subscriptionId = localStorage.getItem('incompleteSubscriptionId');
-  const currentPeriodEnd = localStorage.getItem('currentPeriodEnd');
-  const clientSecret = localStorage.getItem('clientSecret');
-  const incompleteSubscriptionPriceId = localStorage.getItem('incompleteSubscriptionPriceId');
-  const subscriptionInCache = subscriptionId && currentPeriodEnd && clientSecret;
-  const priceIdChanged = subscriptionInCache && (priceId !== incompleteSubscriptionPriceId);
-
-  // As a shortcut, return cached info from local storage if we can.
-  if (subscriptionInCache && !priceIdChanged) {
-    return {clientSecret, subscriptionId, currentPeriodEnd};
-  }
-  
-  if (priceIdChanged) {
-    // Customer may have gone back and changed their plan after an incomplete subscription was created for that plan.
-    // Clean up that subscription by cancelling it. Don't need to wait on this response.
-    cancelSubsciptionApiCall(subscriptionId);
-  }
-  
   return createSubscription({customerId, priceId})
     .then((subscription) => {
-      if (subscription) {
-        // Caching for responsiveness. Could take simpler approach and re-fetch the subscription/payment intent to get latest state.
-        localStorage.setItem('clientSecret', subscription.latest_invoice.payment_intent.client_secret);
-        localStorage.setItem('incompleteSubscriptionId', subscription.id);
-        localStorage.setItem('currentPeriodEnd', subscription.current_period_end);
-        localStorage.setItem('incompleteSubscriptionPriceId', priceId);
-        return {
-          clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-          subscriptionId: subscription.id, 
-          currentPeriodEnd: subscription.current_period_end};
-      } else {
-        throw {error: {message: 'There was a problem creating the subscription.'}}
-      }
+      return {
+        clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+        subscriptionId: subscription.id, 
+        currentPeriodEnd: subscription.current_period_end
+      };
     })
 }
 
@@ -195,43 +233,35 @@ function pay({clientSecret, card}) {
 function selectPrice(priceId) {
   // Show which price the user selected
   if (priceId === 'premium') {
-    document.querySelector('#submit-premium-button-text').innerText =
-      'Selected';
+    document.querySelector('#submit-premium').classList.add('selected');
+    document.querySelector('#submit-basic').classList.remove('selected');
+    document.querySelector('#submit-premium-button-text').innerText = 'Selected';
     document.querySelector('#submit-basic-button-text').innerText = 'Select';
-    document.querySelector('#submit-price').disabled = false;
   } else if (priceId === 'basic') {
-    document.querySelector('#submit-premium-button-text').innerText = 'Select';
+    document.querySelector('#submit-basic').classList.add('selected');
+    document.querySelector('#submit-premium').classList.remove('selected');
     document.querySelector('#submit-basic-button-text').innerText = 'Selected';
-    document.querySelector('#submit-price').disabled = false
-  } else {
-    document.querySelector('#submit-price').disabled = true;
+    document.querySelector('#submit-premium-button-text').innerText = 'Select';
   }
-  setPriceId(priceId);
+  document.querySelector('#submit-price').disabled = false;
+
   // Update the border to show which price is selected
   changePriceSelection(priceId);
 }
 
-function goToPaymentPage() {
-  // Show the payment screen
-  document.querySelector('#payment-view').classList.remove('hidden');
-  document.querySelector('#price-picker').classList.add('hidden');
-
-  const priceId = getPriceId();
-  document.getElementById('total-due-now').innerText = getFormattedAmount(
-    priceInfo[priceId].amount
-  );
-
-  // Add the price selected
-  document.getElementById('price-selected').innerHTML =
-    '→ Subscribing to ' +
-    '<span id="priceId" class="font-bold">' +
-    priceInfo[priceId].name +
-    '</span>';
+function goToPaymentPage({clientSecret, subscriptionId, currentPeriodEnd, priceId}) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('clientSecret', clientSecret);
+  params.set('subscriptionId', subscriptionId);
+  params.set('currentPeriodEnd', currentPeriodEnd);
+  params.set('priceId', priceId);
+  window.location.href = '/pay.html?' + params.toString();
 }
 
+// Return to prices page, preserve the URL params
 function goToPricePicker() {
-  document.querySelector('#payment-view').classList.add('hidden');
-  document.querySelector('#price-picker').classList.remove('hidden');
+  const params = new URLSearchParams(window.location.search);
+  window.location.href = '/prices.html?' + params.toString();
 }
 
 function changePrice() {
@@ -313,6 +343,7 @@ function createCustomer() {
     .then((response) => {
       return response.json();
     })
+    // TODO: Remove this. Does nothing AFAIK
     .then((result) => {
       return result;
     });
@@ -510,7 +541,6 @@ function getCustomersPaymentMethod() {
   }
 }
 
-// TODO: why is this here? It should only be relevant on the account page.
 getCustomersPaymentMethod();
 
 // Shows the cancellation response
@@ -625,15 +655,17 @@ function changeLoadingStateAccountPage(isLoading) {
 
 function changeLoadingStatePrices(isLoading) {
   if (isLoading) {
-    document.querySelector('#payment-view .button-text').classList.add('hidden');
-    document.querySelector('#payment-view .loading-text').classList.remove('hidden');
+    document.querySelector('#button-text').classList.add('hidden');
+    document.querySelector('#loading-text').classList.remove('hidden');
+    document.querySelector('button[type="submit"]').disabled = true;
   } else {
-    document.querySelector('#payment-view .button-text').classList.remove('hidden');
-    document.querySelector('#payment-view .loading-text').classList.add('hidden');
+    document.querySelector('#button-text').classList.remove('hidden');
+    document.querySelector('#loading-text').classList.add('hidden');
+    document.querySelector('button[type="submit"]').disabled = false;
   }
 }
-function getPriceId() {
-  return localStorage.getItem('priceId');
+function getSelectedPriceId() {
+  return document.querySelector('#price-picker button.selected').value
 }
 
 function setPriceId(priceId) {
