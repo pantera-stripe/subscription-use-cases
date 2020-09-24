@@ -343,10 +343,6 @@ function createCustomer() {
     .then((response) => {
       return response.json();
     })
-    // TODO: Remove this. Does nothing AFAIK
-    .then((result) => {
-      return result;
-    });
 }
 
 function onSubscriptionComplete(result) {
